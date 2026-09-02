@@ -1,9 +1,0 @@
-{
-  "name": "PdfCrafter",
-  "short_name": "PdfCrafter",
-  "start_url": "./",
-  "display": "standalone",
-  "background_color": "#0b1020",
-  "theme_color": "#0b1020",
-  "description": "Transform lecture PDFs into printable A4 notes locally in your browser."
-}
