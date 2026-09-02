@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="description" content="PdfCrafter — Transform dark lecture PDFs into perfect printable A4 notes. No login, no ads, no watermarks, 100% browser-based." />
+  <title>PdfCrafter — Printable Notes from Lecture PDFs</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%236d5dfc'/%3E%3Cpath d='M18 10h20l10 10v34H18z' fill='white' opacity='.96'/%3E%3Cpath d='M38 10v12h12' fill='none' stroke='%236d5dfc' stroke-width='4'/%3E%3Cpath d='M24 34h16M24 42h12M24 26h8' stroke='%236d5dfc' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="PdfCrafter home">
+        <span class="brand-mark">P</span>
+        <span>
+          <strong>PdfCrafter</strong>
+          <small>Printable lecture notes</small>
+        </span>
+      </a>
+      <nav class="main-nav" aria-label="Primary navigation">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#support">Support</a>
+      </nav>
+      <a class="nav-cta" href="#workspace">Start processing</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <div class="eyebrow"><span class="dot"></span> 100% browser-based · no login</div>
+          <h1>Transform dark lecture PDFs into <span>perfect printable notes.</span></h1>
+          <p class="hero-copy">Convert smart-board lecture slides, textbooks, and handouts into clean A4 print-ready PDFs. Apply filters, remove unwanted pages, pack up to 16 pages per sheet, and export instantly.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#workspace">Open PdfCrafter</a>
+            <a class="button button-secondary" href="#how">See how it works</a>
+          </div>
+          <div class="trust-row">
+            <span>✓ No account</span>
+            <span>✓ No watermark</span>
+            <span>✓ No ads</span>
+            <span>✓ Files stay on your device</span>
+          </div>
+        </div>
+        <div class="hero-card">
+          <div class="mini-window-top">
+            <span></span><span></span><span></span>
+            <small>Lecture → A4 Notes</small>
+          </div>
+          <div class="mini-preview">
+            <div class="mini-slide dark">
+              <div class="mini-title"></div><div class="mini-line"></div><div class="mini-line short"></div><div class="mini-boxes"><i></i><i></i><i></i></div>
+            </div>
+            <div class="mini-arrow">→</div>
+            <div class="mini-slide light">
+              <div class="mini-title"></div><div class="mini-line"></div><div class="mini-line short"></div><div class="mini-boxes"><i></i><i></i><i></i></div>
+            </div>
+          </div>
+          <div class="mini-footer"><b>A4</b><span>4 pages / sheet</span><span>Grayscale</span><span>Background removed</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace-section" id="workspace">
+      <div class="container">
+        <div class="section-heading compact">
+          <div>
+            <div class="section-kicker">THE PDFCRAFTER WORKSPACE</div>
+            <h2>Upload → preview → tune → export</h2>
+          </div>
+          <span class="secure-badge">🔒 Local processing</span>
+        </div>
+
+        <div id="dropZone" class="drop-zone">
+          <div class="drop-icon">↥</div>
+          <div>
+            <h3>Drop PDF files here</h3>
+            <p>or choose files from your device. Multiple PDFs are supported.</p>
+          </div>
+          <label class="button button-primary file-button">
+            Choose PDF(s)
+            <input id="fileInput" type="file" accept="application/pdf,.pdf" multiple hidden />
+          </label>
+        </div>
+
+        <div id="emptyState" class="empty-state">
+          <div class="empty-illustration">▤</div>
+          <h3>Your printable workspace starts here</h3>
+          <p>Load one or more lecture PDFs to preview pages and customize the output.</p>
+        </div>
+
+        <div id="appShell" class="editor-shell hidden">
+          <div class="source-panel panel">
+            <div class="panel-head">
+              <div>
+                <span class="panel-label">SOURCE PDFs</span>
+                <h3 id="fileCountText">0 files</h3>
+              </div>
+              <div class="panel-actions">
+                <label class="button button-small button-secondary">Add PDFs<input id="addMoreInput" type="file" accept="application/pdf,.pdf" multiple hidden /></label>
+                <button id="clearAllBtn" class="button button-small button-ghost">Clear all</button>
+              </div>
+            </div>
+            <div id="fileList" class="file-list"></div>
+          </div>
+
+          <div class="preview-card panel">
+            <div class="panel-head">
+              <div>
+                <span class="panel-label">LIVE PREVIEW</span>
+                <h3 id="previewTitle">Page preview</h3>
+              </div>
+              <div class="preview-nav">
+                <button id="prevPageBtn" class="icon-btn" aria-label="Previous page">←</button>
+                <span id="pageIndicator">0 / 0</span>
+                <button id="nextPageBtn" class="icon-btn" aria-label="Next page">→</button>
+              </div>
+            </div>
+            <div class="preview-stage" id="previewStage">
+              <div class="preview-placeholder">Select a page to preview it.</div>
+              <canvas id="previewCanvas"></canvas>
+              <div class="preview-overlay hidden" id="previewLoading">Rendering…</div>
+            </div>
+            <div class="preview-meta">
+              <span id="pageSizeText">—</span>
+              <span id="pageFileText">—</span>
+              <span id="pageSelectedText">—</span>
+            </div>
+          </div>
+
+          <div class="controls-panel panel" id="controlsPanel">
+            <div class="controls-header">
+              <div>
+                <span class="panel-label">EDIT & PROCESS</span>
+                <h3>Make everything print-ready</h3>
+              </div>
+              <button id="toggleControlsBtn" class="button button-small button-ghost">Collapse</button>
+            </div>
+
+            <div id="controlsContent">
+              <div class="control-section">
+                <div class="section-title-row"><div><b>1. Page selection</b><span>Select which source pages should appear in the output.</span></div><div class="selection-tools"><button class="text-btn" id="selectAllBtn">Select all</button><button class="text-btn" id="selectNoneBtn">Select none</button></div></div>
+                <div id="pageGrid" class="page-grid"></div>
+              </div>
+
+              <div class="control-section two-col">
+                <div>
+                  <div class="section-title-row"><div><b>2. Print layout</b><span>Convert each output sheet to A4 portrait or landscape.</span></div></div>
+                  <div class="segmented" id="orientationGroup">
+                    <button class="seg-btn active" data-orientation="portrait">A4 Portrait</button>
+                    <button class="seg-btn" data-orientation="landscape">A4 Landscape</button>
+                  </div>
+                  <label class="field-label">Pages per sheet
+                    <select id="layoutSelect">
+                      <option value="1">1 page / sheet</option>
+                      <option value="2">2 pages / sheet</option>
+                      <option value="4" selected>4 pages / sheet</option>
+                      <option value="6">6 pages / sheet</option>
+                      <option value="8">8 pages / sheet</option>
+                      <option value="9">9 pages / sheet</option>
+                      <option value="12">12 pages / sheet</option>
+                      <option value="16">16 pages / sheet</option>
+                    </select>
+                  </label>
+                  <div class="layout-hint" id="layoutHint">Best for detailed lecture notes.</div>
+                </div>
+                <div>
+                  <div class="section-title-row"><div><b>3. Print filter</b><span>Start with a preset, then fine-tune below.</span></div></div>
+                  <label class="field-label">Preset
+                    <select id="presetSelect">
+                      <option value="clean">Clean printable</option>
+                      <option value="smartboard">Smart-board dark mode</option>
+                      <option value="grayscale">Grayscale notes</option>
+                      <option value="contrast">High contrast</option>
+                      <option value="scan">Scanned document</option>
+                      <option value="original">Original look</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="control-section filter-grid">
+                <div class="section-title-row full"><div><b>4. Advanced image controls</b><span>Every change updates the preview of the selected page.</span></div><button id="resetFiltersBtn" class="text-btn">Reset</button></div>
+                <label class="range-field">Brightness <output id="brightnessOut">0</output><input id="brightness" type="range" min="-100" max="100" value="0" /></label>
+                <label class="range-field">Contrast <output id="contrastOut">0</output><input id="contrast" type="range" min="-100" max="100" value="0" /></label>
+                <label class="range-field">Background removal <output id="backgroundOut">0</output><input id="background" type="range" min="0" max="100" value="0" /></label>
+                <label class="range-field">Sharpness <output id="sharpnessOut">0</output><input id="sharpness" type="range" min="0" max="100" value="0" /></label>
+                <label class="switch-field"><span>Grayscale</span><input id="grayscale" type="checkbox" /><i></i></label>
+                <label class="switch-field"><span>Invert</span><input id="invert" type="checkbox" /><i></i></label>
+                <label class="switch-field"><span>Keep dark text</span><input id="keepDarkText" type="checkbox" checked /><i></i></label>
+                <label class="switch-field"><span>Page numbers</span><input id="pageNumbers" type="checkbox" /><i></i></label>
+              </div>
+
+              <div class="control-section export-row">
+                <div>
+                  <b>5. Export</b>
+                  <span id="exportSummary">Ready to create your A4 notes.</span>
+                </div>
+                <div class="export-actions">
+                  <button id="previewSheetBtn" class="button button-secondary">Preview sheet</button>
+                  <button id="exportBtn" class="button button-primary large">Create printable PDF <span>↓</span></button>
+                </div>
+              </div>
+              <div id="progressWrap" class="progress-wrap hidden"><div class="progress-track"><div id="progressBar"></div></div><span id="progressText">Processing…</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="feature-section" id="features">
+      <div class="container">
+        <div class="section-heading">
+          <div class="section-kicker">BUILT FOR REAL STUDY WORKFLOWS</div>
+          <h2>Everything you need for printable lecture notes.</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card"><span>◈</span><h3>Smart processing</h3><p>Remove dark backgrounds, enhance text, adjust brightness and contrast, and sharpen hard-to-read slides.</p></article>
+          <article class="feature-card"><span>⊞</span><h3>Flexible layouts</h3><p>Choose 1, 2, 4, 6, 8, 9, 12, or 16 pages per A4 sheet for detailed notes or compact review sheets.</p></article>
+          <article class="feature-card"><span>✦</span><h3>Live preview</h3><p>Edit controls live underneath the PDF preview, so you can see how the selected page changes before exporting.</p></article>
+          <article class="feature-card"><span>⌁</span><h3>Batch processing</h3><p>Load multiple PDFs, arrange pages in a single workflow, and export one printable document.</p></article>
+          <article class="feature-card"><span>◉</span><h3>Privacy first</h3><p>Files are processed in your browser. This site does not require an account or upload your PDFs to a server.</p></article>
+          <article class="feature-card"><span>∞</span><h3>Free forever</h3><p>No premium tiers, no subscriptions, no hidden fees, and no watermark added to your output.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="steps-section" id="how">
+      <div class="container">
+        <div class="section-heading centered"><div class="section-kicker">HOW IT WORKS</div><h2>From smart-board slide to A4 handout in 4 steps.</h2></div>
+        <div class="steps-grid">
+          <div class="step-card"><span>01</span><h3>Upload</h3><p>Choose one or multiple lecture PDFs from your device.</p></div>
+          <div class="step-card"><span>02</span><h3>Select & clean</h3><p>Remove unwanted pages and apply a print-friendly preset or your own settings.</p></div>
+          <div class="step-card"><span>03</span><h3>Arrange</h3><p>Pick A4 portrait/landscape and any layout from 1 to 16 pages per sheet.</p></div>
+          <div class="step-card"><span>04</span><h3>Export</h3><p>Create your printable PDF without logging in or uploading your source files.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="privacy-section" id="privacy">
+      <div class="container privacy-card">
+        <div>
+          <div class="section-kicker">PRIVACY FIRST</div>
+          <h2>Your PDFs stay on your device.</h2>
+          <p>PdfCrafter is designed as a client-side static web app. PDF rendering and image processing happen inside your browser using JavaScript and WebAssembly-compatible libraries.</p>
+        </div>
+        <div class="privacy-points"><div>✓ No login</div><div>✓ No data collection</div><div>✓ No server upload</div><div>✓ No watermark</div></div>
+      </div>
+    </section>
+
+    <section class="support-section" id="support">
+      <div class="container support-card">
+        <div><div class="section-kicker">DEVELOPER & COMMUNITY</div><h2>Built and shared by CoreTech AI.</h2><p>Updates, tutorials, and community resources are available on the channels below.</p></div>
+        <div class="social-grid">
+          <a href="https://www.youtube.com/@coretechai" target="_blank" rel="noopener" class="social-card"><b>YouTube</b><span>@coretechai</span>↗</a>
+          <a href="https://www.instagram.com/princepia161/" target="_blank" rel="noopener" class="social-card"><b>Instagram</b><span>@princepia161</span>↗</a>
+          <a href="https://t.me/Princepia" target="_blank" rel="noopener" class="social-card"><b>Telegram</b><span>@Princepia</span>↗</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="mission-section">
+      <div class="container mission-card"><span class="mission-icon">✦</span><div><div class="section-kicker">OUR MISSION</div><h2>Powerful document processing should be accessible to everyone.</h2><p>PdfCrafter keeps the workflow simple: no account, no learning curve, and no paywall for the core features.</p></div></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner"><div><b>PdfCrafter</b><span>Transform dark lecture PDFs into printable notes.</span></div><div>© 2026 PdfCrafter · CoreTech AI</div></div>
+  </footer>
+
+  <dialog id="sheetDialog">
+    <div class="dialog-head"><div><span class="panel-label">SHEET PREVIEW</span><h3 id="sheetDialogTitle">A4 preview</h3></div><button id="closeDialogBtn" class="icon-btn" aria-label="Close">×</button></div>
+    <div class="dialog-body"><canvas id="sheetCanvas"></canvas><p class="dialog-note">This is a visual preview of the selected layout and filters. Export creates the final PDF.</p></div>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs" type="module"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
