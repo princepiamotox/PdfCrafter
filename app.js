@@ -3,214 +3,375 @@ import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
 const { PDFDocument, rgb } = window.PDFLib;
 
-document.addEventListener('DOMContentLoaded', () => {
-  const state = { files: [], pages: [], currentPage: 0, orientation: 'portrait', layout: 4, filters: defaultFilters() };
-  const refs = {
-    fileInput: q('#fileInput'), addMoreInput: q('#addMoreInput'), dropZone: q('#dropZone'), emptyState: q('#emptyState'), appShell: q('#appShell'),
-    fileList: q('#fileList'), fileCountText: q('#fileCountText'), pageGrid: q('#pageGrid'), previewCanvas: q('#previewCanvas'), previewStage: q('#previewStage'),
-    previewTitle: q('#previewTitle'), pageIndicator: q('#pageIndicator'), pageSizeText: q('#pageSizeText'), pageFileText: q('#pageFileText'), pageSelectedText: q('#pageSelectedText'),
-    prevPageBtn: q('#prevPageBtn'), nextPageBtn: q('#nextPageBtn'), clearAllBtn: q('#clearAllBtn'), selectAllBtn: q('#selectAllBtn'), selectNoneBtn: q('#selectNoneBtn'),
-    layoutSelect: q('#layoutSelect'), presetSelect: q('#presetSelect'), brightness: q('#brightness'), contrast: q('#contrast'), background: q('#background'), sharpness: q('#sharpness'),
-    brightnessOut: q('#brightnessOut'), contrastOut: q('#contrastOut'), backgroundOut: q('#backgroundOut'), sharpnessOut: q('#sharpnessOut'),
-    grayscale: q('#grayscale'), invert: q('#invert'), keepDarkText: q('#keepDarkText'), pageNumbers: q('#pageNumbers'), resetFiltersBtn: q('#resetFiltersBtn'),
-    exportSummary: q('#exportSummary'), exportBtn: q('#exportBtn'), previewSheetBtn: q('#previewSheetBtn'), progressWrap: q('#progressWrap'), progressBar: q('#progressBar'), progressText: q('#progressText'),
-    toggleControlsBtn: q('#toggleControlsBtn'), controlsContent: q('#controlsContent'), sheetDialog: q('#sheetDialog'), sheetCanvas: q('#sheetCanvas'), closeDialogBtn: q('#closeDialogBtn'), sheetDialogTitle: q('#sheetDialogTitle'), layoutHint: q('#layoutHint')
-  };
+const A4 = { portrait: [595.28, 841.89], landscape: [841.89, 595.28] };
+const PREVIEW_A4 = { portrait: [794, 1123], landscape: [1123, 794] };
 
-  wireDrop();
-  refs.fileInput.addEventListener('change', e => handleFiles(e.target.files));
-  refs.addMoreInput.addEventListener('change', e => handleFiles(e.target.files));
-  refs.clearAllBtn.addEventListener('click', clearAll);
-  refs.prevPageBtn.addEventListener('click', () => selectPage(state.currentPage - 1));
-  refs.nextPageBtn.addEventListener('click', () => selectPage(state.currentPage + 1));
-  refs.selectAllBtn.addEventListener('click', () => { state.pages.forEach(p => p.selected = true); renderAll(); });
-  refs.selectNoneBtn.addEventListener('click', () => { state.pages.forEach(p => p.selected = false); renderAll(); });
-  refs.layoutSelect.addEventListener('change', e => { state.layout = Number(e.target.value); updateLayoutHint(); renderPreview(); renderSummary(); });
-  document.querySelectorAll('[data-orientation]').forEach(btn => btn.addEventListener('click', () => { state.orientation = btn.dataset.orientation; document.querySelectorAll('[data-orientation]').forEach(x => x.classList.toggle('active', x === btn)); renderPreview(); renderSummary(); }));
-  refs.presetSelect.addEventListener('change', () => applyPreset(refs.presetSelect.value));
-  [refs.brightness, refs.contrast, refs.background, refs.sharpness].forEach(el => el.addEventListener('input', syncFilters));
-  [refs.grayscale, refs.invert, refs.keepDarkText, refs.pageNumbers].forEach(el => el.addEventListener('change', syncFilters));
-  refs.resetFiltersBtn.addEventListener('click', () => { state.filters = defaultFilters(); refs.presetSelect.value = 'original'; updateFilterInputs(); renderPreview(); renderSummary(); });
-  refs.exportBtn.addEventListener('click', () => exportPdf(state, refs));
-  refs.previewSheetBtn.addEventListener('click', () => previewSheet(state, refs));
-  refs.closeDialogBtn.addEventListener('click', () => refs.sheetDialog.close());
-  refs.toggleControlsBtn.addEventListener('click', () => { const hidden = refs.controlsContent.classList.toggle('hidden'); refs.toggleControlsBtn.textContent = hidden ? 'Expand' : 'Collapse'; });
-
-  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
-  updateLayoutHint();
-
-  async function handleFiles(fileList) {
-    const files = [...fileList].filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-    if (!files.length) return;
-    for (const file of files) {
-      try {
-        const bytes = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-        const fileId = crypto.randomUUID();
-        state.files.push({ id: fileId, name: file.name, size: file.size, pdf, bytes });
-        for (let i = 1; i <= pdf.numPages; i++) {
-          state.pages.push({ id: `${fileId}-${i}`, fileId, pageNumber: i, selected: true, thumb: null });
-        }
-      } catch (err) {
-        alert(`Could not open ${file.name}. The file may be encrypted or invalid.`);
-      }
-    }
-    state.currentPage = Math.max(0, state.pages.findIndex(p => p.selected));
-    refs.emptyState.classList.add('hidden'); refs.appShell.classList.remove('hidden');
-    await renderAll();
+const LAYOUTS = {
+  portrait: {
+    1: [1, 1], 2: [2, 1], 4: [2, 2], 6: [3, 2], 8: [4, 2], 9: [3, 3], 12: [4, 3], 16: [4, 4]
+  },
+  landscape: {
+    1: [1, 1], 2: [1, 2], 4: [2, 2], 6: [2, 3], 8: [2, 4], 9: [3, 3], 12: [3, 4], 16: [4, 4]
   }
+};
 
-  async function renderAll() {
-    renderFiles();
-    renderPageGrid();
-    await renderPreview();
-    renderSummary();
-  }
+const PRESETS = {
+  clean:        { brightness: 5,  contrast: 18, background: 28, sharpness: 10, grayscale: false, invert: false, autoLight: true,  pageNumbers: false },
+  smartboard:   { brightness: 8,  contrast: 32, background: 72, sharpness: 24, grayscale: false, invert: false, autoLight: true,  pageNumbers: false },
+  grayscale:   { brightness: 7,  contrast: 22, background: 42, sharpness: 15, grayscale: true,  invert: false, autoLight: true,  pageNumbers: false },
+  contrast:    { brightness: 4,  contrast: 48, background: 35, sharpness: 18, grayscale: false, invert: false, autoLight: true,  pageNumbers: false },
+  scan:        { brightness: 7,  contrast: 28, background: 18, sharpness: 36, grayscale: true,  invert: false, autoLight: false, pageNumbers: false },
+  original:    { brightness: 0,  contrast: 0,  background: 0,  sharpness: 0, grayscale: false, invert: false, autoLight: false, pageNumbers: false }
+};
 
-  function renderFiles() {
-    refs.fileCountText.textContent = `${state.files.length} file${state.files.length === 1 ? '' : 's'}`;
-    refs.fileList.innerHTML = state.files.map(file => {
-      const pageCount = state.pages.filter(p => p.fileId === file.id).length;
-      return `<div class="file-item ${activeFile(file.id) ? 'active' : ''}"><div class="file-icon">PDF</div><div class="file-main"><strong title="${escapeAttr(file.name)}">${escapeHtml(file.name)}</strong><span>${formatBytes(file.size)}</span></div><div class="file-pages">${pageCount} pages</div><button class="file-remove" data-remove-file="${file.id}" aria-label="Remove ${escapeAttr(file.name)}">×</button></div>`;
-    }).join('');
-    refs.fileList.querySelectorAll('[data-remove-file]').forEach(btn => btn.addEventListener('click', () => removeFile(btn.dataset.removeFile)));
-  }
+const state = {
+  files: [], pages: [], currentPage: 0,
+  orientation: 'portrait', layout: 4,
+  margin: 10, gutter: 4, quality: 170,
+  filters: { ...PRESETS.clean },
+  busy: false,
+  activePreview: 'source'
+};
 
-  async function renderPageGrid() {
-    refs.pageGrid.innerHTML = '';
-    for (const p of state.pages) {
-      const file = state.files.find(f => f.id === p.fileId);
-      const el = document.createElement('button'); el.type = 'button'; el.className = `page-thumb ${p.selected ? 'selected' : ''}`;
-      el.innerHTML = `<input type="checkbox" ${p.selected ? 'checked' : ''} aria-label="Select page ${p.pageNumber}"><canvas></canvas><small>Page ${p.pageNumber} · ${escapeHtml(file?.name || '')}</small>`;
-      el.addEventListener('click', e => { if (e.target.tagName === 'INPUT') return; state.currentPage = state.pages.findIndex(x => x.id === p.id); renderPageGridHighlight(); renderPreview(); });
-      const cb = el.querySelector('input'); cb.addEventListener('change', () => { p.selected = cb.checked; el.classList.toggle('selected', p.selected); renderSummary(); renderPreview(); });
-      refs.pageGrid.appendChild(el);
-      renderThumbnail(p, el.querySelector('canvas')).catch(() => {});
-    }
-  }
+const q = (s) => document.querySelector(s);
+const qa = (s) => [...document.querySelectorAll(s)];
+const clamp = (v, min=0, max=255) => Math.max(min, Math.min(max, Math.round(v)));
+const escapeHtml = (s='') => String(s).replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const formatBytes = (n) => n < 1024*1024 ? `${Math.max(1, Math.round(n/1024))} KB` : `${(n/(1024*1024)).toFixed(1)} MB`;
+const selectedPages = () => state.pages.filter(p => p.selected);
+const activePage = () => state.pages[state.currentPage] || state.pages[0];
 
-  async function renderThumbnail(p, canvas) {
-    const file = state.files.find(f => f.id === p.fileId); if (!file) return;
-    const page = await file.pdf.getPage(p.pageNumber);
-    const vp = page.getViewport({ scale: 0.22 });
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.ceil(vp.width * dpr); canvas.height = Math.ceil(vp.height * dpr);
-    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); await page.render({ canvasContext: ctx, viewport: vp, transform: [dpr,0,0,dpr,0,0] }).promise;
-  }
+const refs = {
+  fileInput: q('#fileInput'), addMoreInput: q('#addMoreInput'), dropZone: q('#dropZone'), emptyState: q('#emptyState'), appShell: q('#appShell'),
+  fileList: q('#fileList'), fileCountText: q('#fileCountText'), pageGrid: q('#pageGrid'), previewCanvas: q('#previewCanvas'), previewStage: q('#previewStage'),
+  previewTitle: q('#previewTitle'), pageIndicator: q('#pageIndicator'), pageSizeText: q('#pageSizeText'), pageFileText: q('#pageFileText'), pageSelectedText: q('#pageSelectedText'),
+  prevPageBtn: q('#prevPageBtn'), nextPageBtn: q('#nextPageBtn'), clearAllBtn: q('#clearAllBtn'), selectAllBtn: q('#selectAllBtn'), selectNoneBtn: q('#selectNoneBtn'),
+  layoutSelect: q('#layoutSelect'), presetSelect: q('#presetSelect'), brightness: q('#brightness'), contrast: q('#contrast'), background: q('#background'), sharpness: q('#sharpness'),
+  brightnessOut: q('#brightnessOut'), contrastOut: q('#contrastOut'), backgroundOut: q('#backgroundOut'), sharpnessOut: q('#sharpnessOut'),
+  grayscale: q('#grayscale'), invert: q('#invert'), autoLight: q('#autoLight'), pageNumbers: q('#pageNumbers'),
+  margin: q('#margin'), gutter: q('#gutter'), quality: q('#quality'), marginOut: q('#marginOut'), gutterOut: q('#gutterOut'), qualityOut: q('#qualityOut'),
+  resetFiltersBtn: q('#resetFiltersBtn'), exportSummary: q('#exportSummary'), exportBtn: q('#exportBtn'), previewSheetBtn: q('#previewSheetBtn'), progressWrap: q('#progressWrap'), progressBar: q('#progressBar'), progressText: q('#progressText'),
+  toggleControlsBtn: q('#toggleControlsBtn'), controlsContent: q('#controlsContent'), sheetDialog: q('#sheetDialog'), sheetCanvas: q('#sheetCanvas'), closeDialogBtn: q('#closeDialogBtn'), sheetDialogTitle: q('#sheetDialogTitle'), layoutHint: q('#layoutHint'),
+  outputBadge: q('#outputBadge'), detectedRatio: q('#detectedRatio'), sourceInfo: q('#sourceInfo'), sourcePreviewTab: q('#sourcePreviewTab'), sheetPreviewTab: q('#sheetPreviewTab'),
+  smartNote: q('#smartNote')
+};
 
-  async function renderPreview() {
-    const p = state.pages[state.currentPage];
-    const canvas = refs.previewCanvas; const placeholder = refs.previewStage.querySelector('.preview-placeholder');
-    if (!p) { canvas.classList.add('hidden'); if (placeholder) placeholder.classList.remove('hidden'); refs.pageIndicator.textContent = '0 / 0'; return; }
-    if (placeholder) placeholder.classList.add('hidden'); canvas.classList.remove('hidden'); refs.previewStage.querySelector('#previewLoading')?.classList.remove('hidden');
-    const file = state.files.find(f => f.id === p.fileId); const page = await file.pdf.getPage(p.pageNumber);
-    const base = page.getViewport({ scale: 1 });
-    const maxW = Math.min(820, refs.previewStage.clientWidth - 45); const maxH = 640; const scale = Math.min(maxW / base.width, maxH / base.height);
-    const vp = page.getViewport({ scale }); const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.ceil(vp.width * dpr); canvas.height = Math.ceil(vp.height * dpr); canvas.style.width = `${Math.ceil(vp.width)}px`; canvas.style.height = `${Math.ceil(vp.height)}px`;
-    const off = document.createElement('canvas'); off.width = canvas.width; off.height = canvas.height; const ctx = off.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, off.width, off.height);
-    await page.render({ canvasContext: ctx, viewport: vp, transform: [dpr,0,0,dpr,0,0] }).promise;
-    const out = applyFilters(off, state.filters); canvas.getContext('2d').drawImage(out, 0, 0);
-    refs.previewTitle.textContent = `${file.name} · Page ${p.pageNumber}`; refs.pageIndicator.textContent = `${state.currentPage + 1} / ${state.pages.length}`;
-    refs.pageSizeText.textContent = `${Math.round(base.width)} × ${Math.round(base.height)} px`; refs.pageFileText.textContent = file.name; refs.pageSelectedText.textContent = p.selected ? 'Included' : 'Excluded';
-    refs.prevPageBtn.disabled = state.currentPage <= 0; refs.nextPageBtn.disabled = state.currentPage >= state.pages.length - 1;
-    refs.previewStage.querySelector('#previewLoading')?.classList.add('hidden');
-  }
+function syncFilterInputs() {
+  const f = state.filters;
+  refs.brightness.value = f.brightness; refs.contrast.value = f.contrast; refs.background.value = f.background; refs.sharpness.value = f.sharpness;
+  refs.grayscale.checked = f.grayscale; refs.invert.checked = f.invert; refs.autoLight.checked = f.autoLight; refs.pageNumbers.checked = f.pageNumbers;
+  refs.brightnessOut.textContent = f.brightness; refs.contrastOut.textContent = f.contrast; refs.backgroundOut.textContent = f.background; refs.sharpnessOut.textContent = f.sharpness;
+  refs.margin.value = state.margin; refs.gutter.value = state.gutter; refs.quality.value = state.quality;
+  refs.marginOut.textContent = `${state.margin} mm`; refs.gutterOut.textContent = `${state.gutter} mm`; refs.qualityOut.textContent = `${state.quality} DPI`;
+}
 
-  function selectPage(index) { if (index < 0 || index >= state.pages.length) return; state.currentPage = index; renderPreview(); renderPageGridHighlight(); }
-  function renderPageGridHighlight() { refs.pageGrid.querySelectorAll('.page-thumb').forEach((el,i) => el.classList.toggle('is-current', i === state.currentPage)); }
-  function removeFile(id) { state.files = state.files.filter(f => f.id !== id); state.pages = state.pages.filter(p => p.fileId !== id); state.currentPage = Math.min(state.currentPage, Math.max(0, state.pages.length - 1)); if (!state.files.length) clearAll(); else renderAll(); }
-  function clearAll() { state.files = []; state.pages = []; state.currentPage = 0; refs.appShell.classList.add('hidden'); refs.emptyState.classList.remove('hidden'); refs.fileInput.value = ''; refs.addMoreInput.value = ''; }
-  function activeFile(id) { const p = state.pages[state.currentPage]; return p?.fileId === id; }
+function applyPreset(name) {
+  if (!PRESETS[name]) return;
+  state.filters = { ...PRESETS[name] };
+  syncFilterInputs();
+  renderPreview();
+  renderSheetMiniPreview();
+}
 
-  function syncFilters() {
-    state.filters = { brightness: Number(refs.brightness.value), contrast: Number(refs.contrast.value), background: Number(refs.background.value), sharpness: Number(refs.sharpness.value), grayscale: refs.grayscale.checked, invert: refs.invert.checked, keepDarkText: refs.keepDarkText.checked, pageNumbers: refs.pageNumbers.checked };
-    refs.presetSelect.value = 'custom';
-    renderPreview(); renderSummary();
-  }
-
-  function applyPreset(name) {
-    const presets = {
-      clean: { brightness: 8, contrast: 18, background: 18, sharpness: 12, grayscale: false, invert: false, keepDarkText: true, pageNumbers: false },
-      smartboard: { brightness: 15, contrast: 28, background: 78, sharpness: 28, grayscale: false, invert: false, keepDarkText: true, pageNumbers: false },
-      grayscale: { brightness: 10, contrast: 18, background: 25, sharpness: 12, grayscale: true, invert: false, keepDarkText: true, pageNumbers: false },
-      contrast: { brightness: 5, contrast: 48, background: 35, sharpness: 20, grayscale: false, invert: false, keepDarkText: true, pageNumbers: false },
-      scan: { brightness: 7, contrast: 24, background: 12, sharpness: 40, grayscale: true, invert: false, keepDarkText: true, pageNumbers: false },
-      original: defaultFilters()
-    };
-    state.filters = presets[name] ? { ...presets[name] } : state.filters; updateFilterInputs(); renderPreview(); renderSummary();
-  }
-
-  function updateFilterInputs() {
-    const f = state.filters; refs.brightness.value = f.brightness; refs.contrast.value = f.contrast; refs.background.value = f.background; refs.sharpness.value = f.sharpness;
-    refs.grayscale.checked = f.grayscale; refs.invert.checked = f.invert; refs.keepDarkText.checked = f.keepDarkText; refs.pageNumbers.checked = f.pageNumbers;
-    refs.brightnessOut.value = ''; refs.brightnessOut.textContent = f.brightness; refs.contrastOut.textContent = f.contrast; refs.backgroundOut.textContent = f.background; refs.sharpnessOut.textContent = f.sharpness;
-  }
-
-  function applyFilters(source, f) {
-    const out = document.createElement('canvas'); out.width = source.width; out.height = source.height; const ctx = out.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source,0,0);
-    const img = ctx.getImageData(0,0,out.width,out.height); const d = img.data;
-    const c = (259 * (f.contrast * 2.55 + 255)) / (255 * (259 - (f.contrast * 2.55))); const b = f.brightness * 2.55;
-    const bg = f.background / 100;
-    for (let i=0;i<d.length;i+=4) {
-      let r=d[i],g=d[i+1],bl=d[i+2];
-      if (f.grayscale) { const y = .299*r + .587*g + .114*bl; r=g=bl=y; }
-      r = c*(r-128)+128+b; g = c*(g-128)+128+b; bl = c*(bl-128)+128+b;
-      if (bg > 0) { const avg=(r+g+bl)/3; const boost = Math.max(0, (avg-110)/145) * bg; r += (255-r)*boost; g += (255-g)*boost; bl += (255-bl)*boost; }
-      if (f.keepDarkText) { const lum = .299*r+.587*g+.114*bl; if (lum < 105) { r*=.76; g*=.76; bl*=.76; } }
-      if (f.invert) { r=255-r; g=255-g; bl=255-bl; }
-      d[i]=clamp(r); d[i+1]=clamp(g); d[i+2]=clamp(bl);
-    }
-    ctx.putImageData(img,0,0);
-    if (f.sharpness > 0) return sharpen(out, f.sharpness/100);
-    return out;
-  }
-
-  function sharpen(canvas, amount) {
-    const w=canvas.width,h=canvas.height,src=canvas.getContext('2d').getImageData(0,0,w,h),dst=new ImageData(w,h),s=src.data,d=dst.data;
-    const a=amount*1.15, k=[[0,-a,0],[-a,1+4*a,-a],[0,-a,0]];
-    for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++) { let r=0,g=0,b=0; for(let ky=-1;ky<=1;ky++) for(let kx=-1;kx<=1;kx++){const idx=((y+ky)*w+(x+kx))*4,kv=k[ky+1][kx+1];r+=s[idx]*kv;g+=s[idx+1]*kv;b+=s[idx+2]*kv;} const i=(y*w+x)*4;d[i]=clamp(r);d[i+1]=clamp(g);d[i+2]=clamp(b);d[i+3]=255; }
-    for(let x=0;x<w;x++){let i=x*4,j=((h-1)*w+x)*4; d[i]=s[i];d[i+1]=s[i+1];d[i+2]=s[i+2];d[i+3]=255; d[j]=s[j];d[j+1]=s[j+1];d[j+2]=s[j+2];d[j+3]=255;} for(let y=0;y<h;y++){let i=(y*w)*4,j=(y*w+w-1)*4;d[i]=s[i];d[i+1]=s[i+1];d[i+2]=s[i+2];d[i+3]=255;d[j]=s[j];d[j+1]=s[j+1];d[j+2]=s[j+2];d[j+3]=255;}
-    const o=document.createElement('canvas');o.width=w;o.height=h;o.getContext('2d').putImageData(dst,0,0);return o;
-  }
-
-  async function renderSourceToCanvas(p, targetWidth=1200) {
-    const file = state.files.find(f=>f.id===p.fileId); const page = await file.pdf.getPage(p.pageNumber); const base=page.getViewport({scale:1}); const scale=targetWidth/base.width; const vp=page.getViewport({scale}); const c=document.createElement('canvas'); c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);await page.render({canvasContext:ctx,viewport:vp}).promise;return applyFilters(c,state.filters);
-  }
-
-  function layoutSpec(n, orientation){
-    if (n===1) return [1,1]; if (n===2) return [1,2]; if (n===4) return [2,2]; if (n===6) return [2,3]; if (n===8) return [2,4]; if (n===9) return [3,3]; if (n===12) return [3,4]; if (n===16) return [4,4]; return [2,2];
-  }
-  function previewSheetSize(orientation){ return orientation==='portrait' ? [794,1123] : [1123,794]; }
-  function pdfSheetSize(orientation){ return orientation==='portrait' ? [595.28,841.89] : [841.89,595.28]; }
-  function sheetSize(orientation){ return previewSheetSize(orientation); }
-
-  async function previewSheet(state, refs) {
-    const selected=state.pages.filter(p=>p.selected); if(!selected.length) return alert('Select at least one page.');
-    const [W,H]=sheetSize(state.orientation); const canvas=refs.sheetCanvas; canvas.width=W;canvas.height=H;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);const [rows,cols]=layoutSpec(state.layout,state.orientation);const gap=18, cellW=(W-gap*(cols+1))/cols, cellH=(H-gap*(rows+1))/rows;const batch=selected.slice(0,state.layout);
-    for(let i=0;i<batch.length;i++){const img=await renderSourceToCanvas(batch[i],900); const scale=Math.min(cellW/img.width,cellH/img.height);const dw=img.width*scale,dh=img.height*scale;const x=gap+(i%cols)* (cellW+gap)+(cellW-dw)/2;const y=gap+Math.floor(i/cols)*(cellH+gap)+(cellH-dh)/2;ctx.drawImage(img,x,y,dw,dh); if(state.filters.pageNumbers){ctx.fillStyle='#444';ctx.font='12px sans-serif';ctx.fillText(String(i+1),x+dw-10,y+dh-8);} }
-    refs.sheetDialogTitle.textContent=`A4 ${state.orientation} · ${Math.min(state.layout,selected.length)} page${Math.min(state.layout,selected.length)===1?'':'s'} on sheet`; refs.sheetDialog.showModal();
-  }
-
-  async function exportPdf(state, refs){
-    const selected=state.pages.filter(p=>p.selected); if(!selected.length) return alert('Select at least one page to export.');
-    refs.exportBtn.disabled=true; refs.previewSheetBtn.disabled=true; refs.progressWrap.classList.remove('hidden'); refs.progressBar.style.width='0%'; refs.progressText.textContent='Preparing A4 sheets…';
+async function handleFiles(fileList) {
+  const files = [...fileList].filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+  if (!files.length) return;
+  for (const file of files) {
     try {
-      const doc=await PDFDocument.create(); const [W,H]=pdfSheetSize(state.orientation); const [rows,cols]=layoutSpec(state.layout,state.orientation); const gap=18, cellW=(W-gap*(cols+1))/cols, cellH=(H-gap*(rows+1))/rows;
-      const groups=[]; for(let i=0;i<selected.length;i+=state.layout) groups.push(selected.slice(i,i+state.layout));
-      for(let gi=0;gi<groups.length;gi++){
-        const sheet=doc.addPage([W,H]); for(let i=0;i<groups[gi].length;i++){
-          const p=groups[gi][i]; const canvas=await renderSourceToCanvas(p,1000); const dataUrl=canvas.toDataURL('image/jpeg',.90); const img=await doc.embedJpg(dataUrl); const scale=Math.min(cellW/img.width,cellH/img.height); const dw=img.width*scale,dh=img.height*scale; const x=gap+(i%cols)*(cellW+gap)+(cellW-dw)/2; const y=H-gap-Math.floor(i/cols)*(cellH+gap)-dh-(cellH-dh)/2; sheet.drawImage(img,{x,y,width:dw,height:dh}); if(state.filters.pageNumbers){sheet.drawText(String(gi*state.layout+i+1),{x:x+dw-11,y:y+2,size:7,color:rgb(.25,.25,.25)});} }
-          refs.progressBar.style.width=`${Math.round(((gi+1)/groups.length)*100)}%`; refs.progressText.textContent=`Creating sheet ${gi+1} of ${groups.length}…`;
-      }
-      const bytes=await doc.save(); const blob=new Blob([bytes],{type:'application/pdf'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`PdfCrafter-A4-Notes-${new Date().toISOString().slice(0,10)}.pdf`; a.click(); setTimeout(()=>URL.revokeObjectURL(url),2000); refs.progressText.textContent='Done — your printable PDF is ready.';
-    } catch(err){ console.error(err); alert('Export failed. Try fewer pages or a smaller source PDF.'); refs.progressText.textContent='Export failed.'; }
-    finally { refs.exportBtn.disabled=false; refs.previewSheetBtn.disabled=false; }
+      const bytes = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+      const id = crypto.randomUUID();
+      state.files.push({ id, name: file.name, size: file.size, pdf, bytes });
+      for (let i=1; i<=pdf.numPages; i++) state.pages.push({ id:`${id}-${i}`, fileId:id, pageNumber:i, selected:true, width:null, height:null });
+      const firstPage = await pdf.getPage(1);
+      const vb = firstPage.getViewport({ scale: 1 });
+      for (const p of state.pages.filter(x => x.fileId === id)) { p.width = vb.width; p.height = vb.height; }
+    } catch (err) {
+      console.error(err);
+      alert(`Could not open ${file.name}. The file may be encrypted or invalid.`);
+    }
   }
+  if (state.pages.length) state.currentPage = Math.max(0, state.pages.findIndex(p=>p.selected));
+  refs.emptyState.classList.add('hidden'); refs.appShell.classList.remove('hidden');
+  await renderAll();
+}
 
-  function renderSummary(){const total=state.pages.length,sel=state.pages.filter(p=>p.selected).length,sheets=Math.ceil(sel/state.layout)||0;refs.exportSummary.textContent=`${sel} selected page${sel===1?'':'s'} → ${sheets} A4 sheet${sheets===1?'':'s'} · ${state.layout} per sheet · ${state.orientation}.`}
-  function updateLayoutHint(){const n=state.layout;const map={1:'Best for maximum readability.',2:'Good balance of readability and paper saving.',4:'Best for detailed lecture notes.',6:'Compact handout layout.',8:'Ultra-compact review layout.',9:'Balanced dense reference sheet.',12:'Dense revision / handout layout.',16:'Maximum-density reference sheet.'};refs.layoutHint.textContent=map[n]||''}
-  function wireDrop(){['dragenter','dragover'].forEach(ev=>refs.dropZone.addEventListener(ev,e=>{e.preventDefault();refs.dropZone.classList.add('drag')}));['dragleave','drop'].forEach(ev=>refs.dropZone.addEventListener(ev,e=>{e.preventDefault();refs.dropZone.classList.remove('drag')}));refs.dropZone.addEventListener('drop',e=>handleFiles(e.dataTransfer.files));}
-  function defaultFilters(){return {brightness:0,contrast:0,background:0,sharpness:0,grayscale:false,invert:false,keepDarkText:true,pageNumbers:false}}
-  function q(s){return document.querySelector(s)} function clamp(v){return Math.max(0,Math.min(255,Math.round(v)))} function escapeHtml(s=''){return s.replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))} function escapeAttr(s=''){return escapeHtml(s)} function formatBytes(n){if(n<1024*1024)return `${(n/1024).toFixed(0)} KB`;return `${(n/(1024*1024)).toFixed(1)} MB`}
-});
+async function renderAll() {
+  renderFiles();
+  renderPageGrid();
+  updateSourceInfo();
+  updateLayoutHint();
+  renderSummary();
+  await renderPreview();
+  renderSheetMiniPreview();
+}
+
+function renderFiles() {
+  refs.fileCountText.textContent = `${state.files.length} file${state.files.length===1?'':'s'}`;
+  refs.fileList.innerHTML = state.files.map(file => {
+    const count = state.pages.filter(p=>p.fileId===file.id).length;
+    return `<div class="file-item ${activePage()?.fileId===file.id?'active':''}">
+      <div class="file-icon">PDF</div><div class="file-main"><strong title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</strong><span>${formatBytes(file.size)} · ${count} pages</span></div>
+      <button class="file-remove" data-remove-file="${file.id}" aria-label="Remove ${escapeHtml(file.name)}">×</button>
+    </div>`;
+  }).join('');
+  qa('[data-remove-file]').forEach(btn => btn.addEventListener('click', () => removeFile(btn.dataset.removeFile)));
+}
+
+async function renderPageGrid() {
+  refs.pageGrid.innerHTML = '';
+  for (const p of state.pages) {
+    const file = state.files.find(f=>f.id===p.fileId);
+    const el = document.createElement('button');
+    el.type = 'button'; el.className = `page-thumb ${p.selected?'selected':''} ${state.pages[state.currentPage]?.id===p.id?'current':''}`;
+    el.innerHTML = `<span class="thumb-check">${p.selected?'✓':''}</span><canvas></canvas><small>Page ${p.pageNumber}</small><em>${escapeHtml(file?.name || '')}</em>`;
+    el.addEventListener('click', async (e) => {
+      if (e.shiftKey) p.selected = !p.selected;
+      state.currentPage = state.pages.findIndex(x=>x.id===p.id);
+      renderPageGrid(); renderFiles(); updatePageMeta(); await renderPreview();
+    });
+    refs.pageGrid.appendChild(el);
+    try {
+      const img = await renderSourceToCanvas(p, 360, { applyFilters:false });
+      const c = el.querySelector('canvas'); const scale = Math.min(1, 270 / img.width); c.width = Math.max(1,Math.round(img.width*scale)); c.height=Math.max(1,Math.round(img.height*scale)); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    } catch (err) { console.warn(err); }
+  }
+}
+
+async function renderPreview() {
+  const p = activePage();
+  if (!p) return;
+  refs.previewStage.classList.add('loading');
+  try {
+    const img = await renderSourceToCanvas(p, 1600, { applyFilters:true });
+    const maxW = Math.max(300, refs.previewStage.clientWidth - 56);
+    const maxH = Math.max(280, refs.previewStage.clientHeight - 56);
+    const scale = Math.min(maxW/img.width, maxH/img.height, 1);
+    const c = refs.previewCanvas; c.width=Math.max(1,Math.round(img.width*scale)); c.height=Math.max(1,Math.round(img.height*scale));
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    refs.previewTitle.textContent = state.activePreview === 'source' ? `Source page ${p.pageNumber}` : `A4 output preview`;
+    updatePageMeta();
+    if (state.activePreview === 'sheet') await drawSheetOnCanvas(refs.previewCanvas, true);
+  } catch(err) { console.error(err); }
+  finally { refs.previewStage.classList.remove('loading'); }
+}
+
+function updatePageMeta() {
+  const p = activePage();
+  if (!p) return;
+  const file = state.files.find(f=>f.id===p.fileId);
+  refs.pageIndicator.textContent = `${state.currentPage+1} / ${state.pages.length}`;
+  refs.pageSizeText.textContent = `${Math.round(p.width||0)} × ${Math.round(p.height||0)} pt`;
+  refs.pageFileText.textContent = file?.name || '—';
+  refs.pageSelectedText.textContent = p.selected ? 'Included' : 'Excluded';
+}
+
+function updateSourceInfo() {
+  const p = activePage();
+  if (!p) return;
+  const ratio = (p.width && p.height) ? p.width/p.height : 0;
+  const label = ratio > 1.55 && ratio < 1.9 ? '16:9 landscape' : `${ratio.toFixed(2)}:1`;
+  refs.detectedRatio.textContent = label;
+  refs.sourceInfo.textContent = `Detected source: ${label} · ${state.pages.length} total pages`;
+}
+
+function updateLayoutHint() {
+  const n = state.layout;
+  const hints = {1:'Maximum readability — one full 16:9 slide on A4.',2:'Two 16:9 slides stacked cleanly on A4 portrait.',4:'Recommended: 4 lecture slides per A4 sheet.',6:'Compact class handout without crushing the slide.',8:'Dense revision sheet for quick review.',9:'Balanced 3 × 3 reference layout.',12:'High-density revision notes.',16:'Maximum-density quick reference.'};
+  refs.layoutHint.textContent = hints[n] || '';
+  refs.outputBadge.textContent = `A4 ${state.orientation === 'portrait' ? 'Portrait' : 'Landscape'} · ${n}/sheet`;
+}
+
+function renderSummary() {
+  const sel=selectedPages().length, sheets=Math.ceil(sel/state.layout)||0;
+  refs.exportSummary.textContent = `${sel} selected ${sel===1?'page':'pages'} → ${sheets} A4 ${sheets===1?'sheet':'sheets'} · ${state.layout} per sheet · ${state.orientation}.`;
+}
+
+async function renderSourceToCanvas(p, targetWidth=1400, opts={applyFilters:true}) {
+  const file = state.files.find(f=>f.id===p.fileId); if (!file) throw new Error('Missing PDF');
+  const page = await file.pdf.getPage(p.pageNumber);
+  const base = page.getViewport({ scale: 1 });
+  const scale = targetWidth / base.width;
+  const vp = page.getViewport({ scale });
+  const c=document.createElement('canvas'); c.width=Math.ceil(vp.width); c.height=Math.ceil(vp.height);
+  const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
+  await page.render({ canvasContext:ctx, viewport:vp }).promise;
+  return opts.applyFilters ? applyFilters(c,state.filters) : c;
+}
+
+function applyFilters(source,f) {
+  if (!f.brightness && !f.contrast && !f.background && !f.sharpness && !f.grayscale && !f.invert && !f.autoLight) return source;
+  const out=document.createElement('canvas'); out.width=source.width; out.height=source.height;
+  const ctx=out.getContext('2d',{willReadFrequently:true}); ctx.drawImage(source,0,0);
+  const img=ctx.getImageData(0,0,out.width,out.height); const d=img.data;
+  const sampleStep=Math.max(4, Math.floor(Math.sqrt(d.length/4/50000))*2);
+  let lumSum=0,count=0;
+  for(let i=0;i<d.length;i+=4*sampleStep){lumSum += .299*d[i]+.587*d[i+1]+.114*d[i+2]; count++;}
+  const mean=lumSum/Math.max(1,count);
+  const autoInvert=f.autoLight && mean < 118;
+  const cFactor=(259*(f.contrast*2.55+255))/(255*(259-f.contrast*2.55));
+  const b=f.brightness*2.55;
+  const bg=f.background/100;
+  for(let i=0;i<d.length;i+=4){
+    let r=d[i],g=d[i+1],bl=d[i+2];
+    if(autoInvert){r=255-r;g=255-g;bl=255-bl;}
+    if(f.invert){r=255-r;g=255-g;bl=255-bl;}
+    if(f.grayscale){const y=.299*r+.587*g+.114*bl;r=g=bl=y;}
+    r=cFactor*(r-128)+128+b; g=cFactor*(g-128)+128+b; bl=cFactor*(bl-128)+128+b;
+    if(bg>0){
+      const y=.299*r+.587*g+.114*bl;
+      const threshold=150-(bg*55);
+      const whiten=Math.max(0,Math.min(1,(y-threshold)/(255-threshold)))*bg;
+      r += (255-r)*whiten; g += (255-g)*whiten; bl += (255-bl)*whiten;
+      if(bg>0.45 && y>190) { r=g=bl=255; }
+      if(bg>0.65 && y<90) { const ink=(90-y)/90; r*=1-ink*.05; g*=1-ink*.05; bl*=1-ink*.05; }
+    }
+    d[i]=clamp(r);d[i+1]=clamp(g);d[i+2]=clamp(bl);
+  }
+  ctx.putImageData(img,0,0);
+  return f.sharpness>0 ? sharpen(out,f.sharpness/100) : out;
+}
+
+function sharpen(canvas,amount){
+  const w=canvas.width,h=canvas.height,src=canvas.getContext('2d').getImageData(0,0,w,h),s=src.data,d=new Uint8ClampedArray(s.length),a=amount*0.9;
+  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
+    const i=(y*w+x)*4;
+    for(let ch=0;ch<3;ch++){
+      const center=s[i+ch]; const left=s[i-4+ch],right=s[i+4+ch],up=s[i-w*4+ch],down=s[i+w*4+ch];
+      d[i+ch]=clamp(center*(1+4*a)-a*(left+right+up+down));
+    }
+    d[i+3]=255;
+  }
+  for(let x=0;x<w;x++){for(const y of [0,h-1]){const i=(y*w+x)*4;d[i]=s[i];d[i+1]=s[i+1];d[i+2]=s[i+2];d[i+3]=255;}}
+  for(let y=0;y<h;y++){for(const x of [0,w-1]){const i=(y*w+x)*4;d[i]=s[i];d[i+1]=s[i+1];d[i+2]=s[i+2];d[i+3]=255;}}
+  const out=document.createElement('canvas');out.width=w;out.height=h;out.getContext('2d').putImageData(new ImageData(d,w,h),0,0);return out;
+}
+
+function layoutSpec(n,orientation){ return LAYOUTS[orientation]?.[n] || [2,2]; }
+function printDimensions(orientation){ return A4[orientation]; }
+function previewDimensions(orientation){ return PREVIEW_A4[orientation]; }
+
+function cellGeometry(W,H,n,orientation){
+  const [rows,cols]=layoutSpec(n,orientation);
+  const margin=state.margin*2.83465, gap=state.gutter*2.83465;
+  const usableW=W-2*margin, usableH=H-2*margin;
+  const cellW=(usableW-gap*(cols-1))/cols;
+  const cellH=(usableH-gap*(rows-1))/rows;
+  return {rows,cols,margin,gap,cellW,cellH};
+}
+
+async function drawA4Sheet(ctx, W, H, selected, docMode=false) {
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+  const {rows,cols,margin,gap,cellW,cellH}=cellGeometry(W,H,state.layout,state.orientation);
+  const batch=selected.slice(0,state.layout);
+  for(let i=0;i<batch.length;i++){
+    const img=await renderSourceToCanvas(batch[i], docMode ? 1800 : 1200, {applyFilters:true});
+    const scale=Math.min(cellW/img.width,cellH/img.height);
+    const dw=img.width*scale, dh=img.height*scale;
+    const col=i%cols,row=Math.floor(i/cols);
+    const x=margin+col*(cellW+gap)+(cellW-dw)/2;
+    const y=margin+row*(cellH+gap)+(cellH-dh)/2;
+    ctx.drawImage(img,x,y,dw,dh);
+    if(state.filters.pageNumbers){
+      ctx.fillStyle='rgba(60,60,60,.82)'; ctx.font=`${Math.max(7,W/120)}px Inter, Arial`; ctx.textAlign='right';
+      ctx.fillText(String(selected.indexOf(batch[i])+1), x+dw, Math.min(H-margin/2,y+dh+11));
+    }
+  }
+}
+
+async function drawSheetOnCanvas(canvas, compact=false){
+  const selected=selectedPages(); if(!selected.length) return;
+  const [W,H]=compact ? previewDimensions(state.orientation) : [canvas.width,canvas.height];
+  canvas.width=W;canvas.height=H;const ctx=canvas.getContext('2d');
+  await drawA4Sheet(ctx,W,H,selected,false);
+}
+
+async function previewSheet(){
+  const selected=selectedPages(); if(!selected.length) return alert('Select at least one page.');
+  const [W,H]=previewDimensions(state.orientation); refs.sheetCanvas.width=W;refs.sheetCanvas.height=H;
+  await drawA4Sheet(refs.sheetCanvas.getContext('2d'),W,H,selected,false);
+  refs.sheetDialogTitle.textContent=`A4 ${state.orientation} · ${Math.min(state.layout,selected.length)} slide${Math.min(state.layout,selected.length)===1?'':'s'} on sheet`;
+  refs.sheetDialog.showModal();
+}
+
+function renderSheetMiniPreview(){
+  const c=q('#miniA4Canvas'); if(!c || !selectedPages().length) return;
+  const [W,H]=previewDimensions(state.orientation); c.width=W/2;c.height=H/2;
+  const ctx=c.getContext('2d');ctx.save();ctx.scale(.5,.5);drawA4Sheet(ctx,W,H,selectedPages(),false).catch(()=>{});ctx.restore();
+}
+
+async function exportPdf(){
+  const selected=selectedPages(); if(!selected.length) return alert('Select at least one page to export.');
+  if(state.busy) return; state.busy=true;
+  refs.exportBtn.disabled=true; refs.previewSheetBtn.disabled=true; refs.progressWrap.classList.remove('hidden'); refs.progressBar.style.width='0%';
+  try {
+    const doc=await PDFDocument.create(); const [W,H]=printDimensions(state.orientation); const groups=[];
+    for(let i=0;i<selected.length;i+=state.layout) groups.push(selected.slice(i,i+state.layout));
+    for(let gi=0;gi<groups.length;gi++){
+      const page=doc.addPage([W,H]);
+      const {rows,cols,margin,gap,cellW,cellH}=cellGeometry(W,H,state.layout,state.orientation);
+      for(let i=0;i<groups[gi].length;i++){
+        const p=groups[gi][i];
+        const targetPx=Math.min(2400,Math.max(650,Math.round(cellW * state.quality / 72)));
+        const canvas=await renderSourceToCanvas(p,targetPx,{applyFilters:true});
+        const jpg=canvas.toDataURL('image/jpeg',0.92); const img=await doc.embedJpg(jpg);
+        const scale=Math.min(cellW/img.width,cellH/img.height);
+        const dw=img.width*scale,dh=img.height*scale;
+        const col=i%cols,row=Math.floor(i/cols);
+        const x=margin+col*(cellW+gap)+(cellW-dw)/2;
+        const y=H-margin-row*(cellH+gap)-dh-(cellH-dh)/2;
+        page.drawImage(img,{x,y,width:dw,height:dh});
+      }
+      refs.progressBar.style.width=`${Math.round(((gi+1)/groups.length)*100)}%`;
+      refs.progressText.textContent=`Building A4 sheet ${gi+1} of ${groups.length}…`;
+      await new Promise(r=>setTimeout(r,0));
+    }
+    const metaTitle=`PdfCrafter A4 Notes — ${new Date().toLocaleDateString('en-IN')}`;
+    doc.setTitle(metaTitle); doc.setProducer('PdfCrafter'); doc.setCreator('PdfCrafter');
+    const bytes=await doc.save();
+    const blob=new Blob([bytes],{type:'application/pdf'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`PdfCrafter-A4-Notes-${new Date().toISOString().slice(0,10)}.pdf`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),3000);
+    refs.progressText.textContent=`Done — ${groups.length} A4 sheet${groups.length===1?'':'s'} exported.`;
+  } catch(err){console.error(err);alert('Export failed. Try a smaller selection or lower export DPI.');refs.progressText.textContent='Export failed.';}
+  finally {state.busy=false;refs.exportBtn.disabled=false;refs.previewSheetBtn.disabled=false;}
+}
+
+function removeFile(id){
+  state.files=state.files.filter(f=>f.id!==id); state.pages=state.pages.filter(p=>p.fileId!==id);
+  state.currentPage=Math.min(state.currentPage,Math.max(0,state.pages.length-1));
+  if(!state.pages.length){refs.appShell.classList.add('hidden');refs.emptyState.classList.remove('hidden');}
+  renderAll();
+}
+function clearAll(){
+  if(!state.files.length) return; state.files=[];state.pages=[];state.currentPage=0;
+  refs.appShell.classList.add('hidden');refs.emptyState.classList.remove('hidden');renderAll();
+}
+function setActivePreview(mode){
+  state.activePreview=mode; refs.sourcePreviewTab.classList.toggle('active',mode==='source');refs.sheetPreviewTab.classList.toggle('active',mode==='sheet');
+  renderPreview();
+}
+function changePage(delta){if(!state.pages.length)return;state.currentPage=(state.currentPage+delta+state.pages.length)%state.pages.length;renderPageGrid();updatePageMeta();renderPreview();}
+function bind(){
+  refs.fileInput.addEventListener('change',e=>handleFiles(e.target.files));refs.addMoreInput.addEventListener('change',e=>handleFiles(e.target.files));refs.clearAllBtn.addEventListener('click',clearAll);
+  refs.prevPageBtn.addEventListener('click',()=>changePage(-1));refs.nextPageBtn.addEventListener('click',()=>changePage(1));
+  refs.selectAllBtn.addEventListener('click',()=>{state.pages.forEach(p=>p.selected=true);renderPageGrid();renderSummary();renderSheetMiniPreview();});
+  refs.selectNoneBtn.addEventListener('click',()=>{state.pages.forEach(p=>p.selected=false);renderPageGrid();renderSummary();renderSheetMiniPreview();});
+  refs.layoutSelect.addEventListener('change',e=>{state.layout=Number(e.target.value);updateLayoutHint();renderSummary();renderSheetMiniPreview();});
+  qa('[data-orientation]').forEach(btn=>btn.addEventListener('click',()=>{state.orientation=btn.dataset.orientation;qa('[data-orientation]').forEach(x=>x.classList.toggle('active',x===btn));updateLayoutHint();renderSummary();renderPreview();renderSheetMiniPreview();}));
+  refs.presetSelect.addEventListener('change',e=>applyPreset(e.target.value));
+  ['brightness','contrast','background','sharpness'].forEach(id=>q('#'+id).addEventListener('input',()=>{state.filters[id]=Number(q('#'+id).value);refs[id+'Out'].textContent=q('#'+id).value;renderPreview();renderSheetMiniPreview();}));
+  ['grayscale','invert','autoLight','pageNumbers'].forEach(id=>q('#'+id).addEventListener('change',()=>{state.filters[id]=q('#'+id).checked;renderPreview();renderSheetMiniPreview();}));
+  refs.margin.addEventListener('input',()=>{state.margin=Number(refs.margin.value);refs.marginOut.textContent=`${state.margin} mm`;renderSheetMiniPreview();});
+  refs.gutter.addEventListener('input',()=>{state.gutter=Number(refs.gutter.value);refs.gutterOut.textContent=`${state.gutter} mm`;renderSheetMiniPreview();});
+  refs.quality.addEventListener('input',()=>{state.quality=Number(refs.quality.value);refs.qualityOut.textContent=`${state.quality} DPI`;});
+  refs.resetFiltersBtn.addEventListener('click',()=>{state.filters={...PRESETS.clean};refs.presetSelect.value='clean';syncFilterInputs();renderPreview();renderSheetMiniPreview();});
+  refs.exportBtn.addEventListener('click',exportPdf);refs.previewSheetBtn.addEventListener('click',previewSheet);
+  refs.closeDialogBtn.addEventListener('click',()=>refs.sheetDialog.close());refs.sourcePreviewTab.addEventListener('click',()=>setActivePreview('source'));refs.sheetPreviewTab.addEventListener('click',()=>setActivePreview('sheet'));
+  refs.toggleControlsBtn.addEventListener('click',()=>{const hidden=refs.controlsContent.classList.toggle('hidden');refs.toggleControlsBtn.textContent=hidden?'Expand controls':'Collapse controls';});
+  ['dragenter','dragover'].forEach(ev=>refs.dropZone.addEventListener(ev,e=>{e.preventDefault();refs.dropZone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>refs.dropZone.addEventListener(ev,e=>{e.preventDefault();refs.dropZone.classList.remove('drag');}));
+  refs.dropZone.addEventListener('drop',e=>handleFiles(e.dataTransfer.files));
+  window.addEventListener('resize',()=>{if(state.pages.length)renderPreview();});
+}
+
+bind(); syncFilterInputs(); updateLayoutHint();
+if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));

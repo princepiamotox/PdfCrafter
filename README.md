@@ -1,33 +1,25 @@
 # PdfCrafter
 
-Static, browser-only PDF notes processor for GitHub Pages.
+PdfCrafter is a static, browser-only lecture PDF processor designed for wide smart-board / 16:9 lecture PDFs.
 
-## What it does
-
-- Converts lecture PDFs to printable A4 sheets
-- A4 portrait or landscape
-- 1, 2, 4, 6, 8, 9, 12, or 16 pages per sheet
-- Multiple PDFs / batch workflow
-- Page selection and removal
-- Smart presets: Clean printable, Smart-board dark mode, Grayscale, High contrast, Scanned document, Original
-- Live preview under the PDF with brightness, contrast, background removal, sharpness, grayscale, invert and page-number controls
-- Exports a new PDF entirely in the browser
-- No login, server upload, ads or watermark
-
-## Run locally
-
-Because the page uses ES modules, serve it with any static server. For example:
-
-```bash
-python -m http.server 8080
-```
-
-Then open `http://localhost:8080`.
+## Core workflow
+- Detect wide lecture pages and preserve the full slide (no cropping)
+- Convert to A4 Portrait or A4 Landscape
+- Pack 1, 2, 4, 6, 8, 9, 12 or 16 slides per A4 sheet
+- Remove unwanted pages before export
+- Live source-page and A4-sheet preview
+- Brightness, contrast, background cleanup, sharpness
+- Auto-light dark slides, grayscale, invert, page numbers
+- Adjustable A4 margins and gutters
+- Adjustable export DPI
+- Multiple PDFs in one browser session
+- Client-side only — source files are not sent to a server
 
 ## GitHub Pages
-
 1. Upload all files in this folder to the repository root.
-2. Enable **Settings → Pages → Deploy from branch**.
-3. Select the branch and `/ (root)`.
+2. Open **Settings → Pages**.
+3. Choose **Deploy from a branch**.
+4. Select `main` and `/(root)`.
+5. Save and wait for the Pages deployment to finish.
 
-The app uses jsDelivr for PDF.js and pdf-lib, while all uploaded PDFs remain in the browser.
+The site has no backend and is intended for GitHub Pages or any static host.
